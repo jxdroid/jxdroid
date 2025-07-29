@@ -147,6 +147,7 @@
             <main id="app-grid">
                 <div class="app-icon" data-app="Terminal">   <img src="icons/terminal.png" alt="Terminal">    <span>Terminal</span>      </div>
                 <div class="app-icon" data-app="Magisk">     <img src="icons/magisk.png" alt="Magisk">        <span>Magisk</span>        </div>
+                <div class="app-icon" data-app="JxKernel">   <img src="icons/ksun.png" alt="JxKernel">      <span>JxKernel</span>      </div>
                 <div class="app-icon" data-app="JxMarket">   <img src="icons/market.png" alt="JxMarket">      <span>JxMarket</span>      </div>
                 <div class="app-icon" data-app="Donate">     <img src="icons/donate.png" alt="Донат">         <span>Донат</span>         </div>
                 <div class="app-icon" data-app="Player">     <img src="icons/mp3.png" alt="MP3 Player">       <span>MP3 Player</span>    </div>
@@ -244,6 +245,7 @@
                              writeLine(`Attempting to unlock bootloader...`);
                              setTimeout(() => {
                                 localStorage.setItem('bootloader_unlocked', 'true');
+                                localStorage.setItem('is_rooted', 'true');
                                 writeLine(`oem bootloader unlock... [OKAY]  13.23 sec.`, '#00ff00');
                                 writeLine(`Device will reboot in 5 seconds.`);
                                 setTimeout(() => rebootDevice(true), 5000);
@@ -303,27 +305,87 @@
                     .status-ok { background: #2e7d32; }
                     .status-fail { background: #c62828; }
                     .status-rooted { background: #0099cc; }
-                    .magisk-btn { background: #1976d2; color: #fff; border: none; padding: 15px 30px; font-size: 18px; border-radius: 5px; cursor: pointer; margin-top: 20px; transition: opacity 0.3s; }
+                    .magisk-btn { background: #1976d2; color: #fff; border: none; padding: 15px 30px; font-size: 18px; border-radius: 5px; cursor: pointer; margin: 10px; transition: opacity 0.3s; }
+                    .magisk-btn.danger { background: #d32f2f; }
                     .magisk-info { font-size: 14px; color: #aaa; margin-top: 20px; padding: 0 10px; line-height: 1.5; }
+                    .magisk-progress { width: 100%; height: 20px; background: #333; border-radius: 10px; margin: 15px 0; overflow: hidden; }
+                    .magisk-progress-bar { height: 100%; background: linear-gradient(90deg, #1976d2, #42a5f5); width: 0%; transition: width 0.3s; }
+                    .magisk-log { background: #1a1a1a; padding: 10px; border-radius: 5px; margin-top: 15px; text-align: left; font-family: monospace; font-size: 12px; max-height: 150px; overflow-y: auto; }
                 </style>
                 <div class="magisk-body">
                     <div class="magisk-logo">⚡</div>
                     <h2>Magisk</h2>
                     <div id="magisk-status-box" class="magisk-status"></div>
                     <button id="install-btn" class="magisk-btn">Install</button>
+                    <button id="uninstall-btn" class="magisk-btn danger hidden">Uninstall</button>
+                    <div id="magisk-progress" class="magisk-progress hidden">
+                        <div id="magisk-progress-bar" class="magisk-progress-bar"></div>
+                    </div>
+                    <div id="magisk-log" class="magisk-log hidden"></div>
                     <div id="magisk-message" class="magisk-info"></div>
                 </div>
             `;
+            
             const statusBox = container.querySelector('#magisk-status-box');
             const installBtn = container.querySelector('#install-btn');
+            const uninstallBtn = container.querySelector('#uninstall-btn');
             const message = container.querySelector('#magisk-message');
+            const progress = container.querySelector('#magisk-progress');
+            const progressBar = container.querySelector('#magisk-progress-bar');
+            const log = container.querySelector('#magisk-log');
+            
+            const addLog = (text, color = '#00ff00') => {
+                const timestamp = new Date().toLocaleTimeString();
+                log.innerHTML += `<div style="color: ${color};">[${timestamp}] ${text}</div>`;
+                log.scrollTop = log.scrollHeight;
+            };
+            
             if (localStorage.getItem('is_rooted') === 'true') {
                 statusBox.textContent = 'ROOT: Установлен';
                 statusBox.classList.add('status-rooted');
-                message.textContent = 'Ваше устройство уже рутировано.';
-                installBtn.disabled = true;
-                installBtn.style.opacity = '0.5';
-                installBtn.textContent = 'Установлено';
+                message.textContent = 'Ваше устройство уже рутировано через Magisk.';
+                installBtn.classList.add('hidden');
+                uninstallBtn.classList.remove('hidden');
+                
+                uninstallBtn.addEventListener('click', () => {
+                    if (confirm('ВНИМАНИЕ! Удаление Magisk приведет к потере root-прав.\n\nВЫ ПОДТВЕРЖДАЕТЕ ДЕЙСТВИЕ?')) {
+                        progress.classList.remove('hidden');
+                        log.classList.remove('hidden');
+                        uninstallBtn.disabled = true;
+                        
+                        addLog('Начинаем удаление Magisk...', '#ffff00');
+                        
+                        const steps = [
+                            { progress: 20, log: 'Остановка служб Magisk...', delay: 800 },
+                            { progress: 40, log: 'Удаление модулей Magisk...', delay: 1000 },
+                            { progress: 60, log: 'Восстановление оригинального boot.img...', delay: 1200 },
+                            { progress: 80, log: 'Очистка системных файлов...', delay: 900 },
+                            { progress: 100, log: 'Magisk успешно удален!', delay: 500 }
+                        ];
+                        
+                        let currentStep = 0;
+                        const processStep = () => {
+                            if (currentStep < steps.length) {
+                                const step = steps[currentStep];
+                                progressBar.style.width = step.progress + '%';
+                                addLog(step.log, '#00ff00');
+                                
+                                if (step.progress === 100) {
+                                    setTimeout(() => {
+                                        localStorage.removeItem('is_rooted');
+                                        addLog('Перезагрузка устройства через 3 секунды...', '#ffff00');
+                                        setTimeout(() => rebootDevice(true), 3000);
+                                    }, step.delay);
+                                } else {
+                                    setTimeout(processStep, step.delay);
+                                }
+                                currentStep++;
+                            }
+                        };
+                        
+                        processStep();
+                    }
+                });
             } else if (state.isBootloaderLocked) {
                 statusBox.textContent = 'ROOT: НЕ ДОСТУПЕН';
                 statusBox.classList.add('status-fail');
@@ -333,13 +395,45 @@
             } else {
                 statusBox.textContent = 'ROOT: ДОСТУПЕН';
                 statusBox.classList.add('status-ok');
-                message.textContent = 'Ваше устройство готово к получению ROOT-прав.';
+                message.textContent = 'Ваше устройство готово к получению ROOT-прав через Magisk.';
+                
                 installBtn.addEventListener('click', () => {
                     if (confirm('ВЫ ПОЛУЧИТЕ РУТ-ПРАВА НА СВОЕМ УСТРОЙСТВЕ, ВЫ ПОДТВЕРЖДАЕТЕ ДЕЙСТВИЕ?')) {
-                        localStorage.setItem('is_rooted', 'true');
-                        message.textContent = 'Установка Magisk... Успешно! Перезагрузка...';
+                        progress.classList.remove('hidden');
+                        log.classList.remove('hidden');
                         installBtn.disabled = true;
-                        setTimeout(rebootDevice, 4000);
+                        
+                        addLog('Начинаем установку Magisk...', '#ffff00');
+                        
+                        const steps = [
+                            { progress: 20, log: 'Скачивание Magisk v26.1...', delay: 1000 },
+                            { progress: 40, log: 'Патчинг boot.img...', delay: 1500 },
+                            { progress: 60, log: 'Установка Magisk Manager...', delay: 800 },
+                            { progress: 80, log: 'Настройка root-прав...', delay: 1000 },
+                            { progress: 100, log: 'Magisk установлен успешно!', delay: 500 }
+                        ];
+                        
+                        let currentStep = 0;
+                        const processStep = () => {
+                            if (currentStep < steps.length) {
+                                const step = steps[currentStep];
+                                progressBar.style.width = step.progress + '%';
+                                addLog(step.log, '#00ff00');
+                                
+                                if (step.progress === 100) {
+                                    setTimeout(() => {
+                                        localStorage.setItem('is_rooted', 'true');
+                                        addLog('Перезагрузка устройства через 3 секунды...', '#ffff00');
+                                        setTimeout(() => rebootDevice(true), 3000);
+                                    }, step.delay);
+                                } else {
+                                    setTimeout(processStep, step.delay);
+                                }
+                                currentStep++;
+                            }
+                        };
+                        
+                        processStep();
                     }
                 });
             }
@@ -371,7 +465,7 @@
                 let content = '';
                 switch(menu) {
                     case 'screen':
-                        const wallpapers = ['images/wp1.jpg', 'images/wp2.jpg']; // Добавьте свои обои сюда
+                        const wallpapers = ['images/wp1.jpg', 'images/wp2.jpg']; 
                         let thumbsHTML = wallpapers.map(wp => `<img src="${wp}" data-wp="${wp}" class="wallpaper-thumb">`).join('');
                         content = `
                             <style>
@@ -601,6 +695,161 @@
                 }
             });
             observer.observe(appWindow, { attributes: true });
+        },
+
+        JxKernel: (container, state) => {
+            container.innerHTML = `
+                <style>
+                    .kernel-body { padding: 20px; text-align: center; }
+                    .kernel-logo { font-size: 48px; color: #ff6b35; }
+                    .kernel-status { margin: 15px 0; padding: 15px; border-radius: 8px; font-weight: bold; }
+                    .status-ok { background: #2e7d32; }
+                    .status-fail { background: #c62828; }
+                    .status-rooted { background: #ff6b35; }
+                    .kernel-btn { background: #ff6b35; color: #fff; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; margin: 10px; transition: opacity 0.3s; }
+                    .kernel-btn.danger { background: #d32f2f; }
+                    .kernel-info { font-size: 14px; color: #aaa; margin-top: 20px; padding: 0 10px; line-height: 1.5; }
+                    .kernel-progress { width: 100%; height: 20px; background: #333; border-radius: 10px; margin: 15px 0; overflow: hidden; }
+                    .kernel-progress-bar { height: 100%; background: linear-gradient(90deg, #ff6b35, #ff8c42); width: 0%; transition: width 0.3s; }
+                    .kernel-log { background: #1a1a1a; padding: 10px; border-radius: 5px; margin-top: 15px; text-align: left; font-family: monospace; font-size: 12px; max-height: 150px; overflow-y: auto; }
+                </style>
+                <div class="kernel-body">
+                    <div class="kernel-logo">⚡</div>
+                    <h2>JxKernel</h2>
+                    <div id="kernel-status-box" class="kernel-status"></div>
+                    <button id="kernelsu-btn" class="kernel-btn">KernelSU NEXT</button>
+                    <button id="uninstall-kernel-btn" class="kernel-btn danger hidden">Uninstall</button>
+                    <div id="kernel-progress" class="kernel-progress hidden">
+                        <div id="kernel-progress-bar" class="kernel-progress-bar"></div>
+                    </div>
+                    <div id="kernel-log" class="kernel-log hidden"></div>
+                    <div id="kernel-message" class="kernel-info"></div>
+                </div>
+            `;
+            
+            const statusBox = container.querySelector('#kernel-status-box');
+            const kernelsuBtn = container.querySelector('#kernelsu-btn');
+            const uninstallKernelBtn = container.querySelector('#uninstall-kernel-btn');
+            const message = container.querySelector('#kernel-message');
+            const progress = container.querySelector('#kernel-progress');
+            const progressBar = container.querySelector('#kernel-progress-bar');
+            const log = container.querySelector('#kernel-log');
+            
+            const addLog = (text, color = '#00ff00') => {
+                const timestamp = new Date().toLocaleTimeString();
+                log.innerHTML += `<div style="color: ${color};">[${timestamp}] ${text}</div>`;
+                log.scrollTop = log.scrollHeight;
+            };
+            
+            if (localStorage.getItem('kernelsu_installed') === 'true') {
+                statusBox.textContent = 'KernelSU: УСТАНОВЛЕН';
+                statusBox.classList.add('status-rooted');
+                message.textContent = 'KernelSU NEXT успешно установлен. Ваше устройство рутировано.';
+                kernelsuBtn.classList.add('hidden');
+                uninstallKernelBtn.classList.remove('hidden');
+                
+                uninstallKernelBtn.addEventListener('click', () => {
+                    if (confirm('ВНИМАНИЕ! Удаление KernelSU NEXT приведет к потере root-прав.\n\nВЫ ПОДТВЕРЖДАЕТЕ ДЕЙСТВИЕ?')) {
+                        progress.classList.remove('hidden');
+                        log.classList.remove('hidden');
+                        uninstallKernelBtn.disabled = true;
+                        
+                        addLog('Начинаем удаление KernelSU NEXT...', '#ffff00');
+                        
+                        const steps = [
+                            { progress: 15, log: 'Остановка служб KernelSU...', delay: 800 },
+                            { progress: 30, log: 'Удаление модулей KernelSU...', delay: 1000 },
+                            { progress: 50, log: 'Восстановление оригинального ядра...', delay: 1500 },
+                            { progress: 70, log: 'Очистка системных файлов...', delay: 900 },
+                            { progress: 85, log: 'Сброс прав доступа...', delay: 800 },
+                            { progress: 100, log: 'KernelSU NEXT успешно удален!', delay: 500 }
+                        ];
+                        
+                        let currentStep = 0;
+                        const processStep = () => {
+                            if (currentStep < steps.length) {
+                                const step = steps[currentStep];
+                                progressBar.style.width = step.progress + '%';
+                                addLog(step.log, '#00ff00');
+                                
+                                if (step.progress === 100) {
+                                    setTimeout(() => {
+                                        localStorage.removeItem('kernelsu_installed');
+                                        localStorage.removeItem('is_rooted');
+                                        addLog('Перезагрузка устройства через 3 секунды...', '#ffff00');
+                                        setTimeout(() => rebootDevice(true), 3000);
+                                    }, step.delay);
+                                } else {
+                                    setTimeout(processStep, step.delay);
+                                }
+                                currentStep++;
+                            }
+                        };
+                        
+                        processStep();
+                    }
+                });
+            } else if (localStorage.getItem('is_rooted') === 'true') {
+                statusBox.textContent = 'KernelSU: КОНФЛИКТ';
+                statusBox.classList.add('status-fail');
+                message.innerHTML = '<b>Обнаружен Magisk!</b><br>KernelSU NEXT несовместим с Magisk. Сначала удалите Magisk.';
+                kernelsuBtn.disabled = true;
+                kernelsuBtn.style.opacity = '0.5';
+            } else if (state.isBootloaderLocked) {
+                statusBox.textContent = 'KernelSU: НЕ ДОСТУПЕН';
+                statusBox.classList.add('status-fail');
+                message.innerHTML = '<b>Загрузчик заблокирован!</b><br>Сперва разблокируйте его в терминале командой: sudo unlock oem bootloader';
+                kernelsuBtn.disabled = true;
+                kernelsuBtn.style.opacity = '0.5';
+            } else {
+                statusBox.textContent = 'KernelSU: ДОСТУПЕН';
+                statusBox.classList.add('status-ok');
+                message.textContent = 'Ваше устройство готово к установке KernelSU NEXT.';
+                
+                kernelsuBtn.addEventListener('click', () => {
+                    if (confirm('ВНИМАНИЕ! Установка KernelSU NEXT изменит ядро системы.\n\nВЫ ПОДТВЕРЖДАЕТЕ ДЕЙСТВИЕ?')) {
+                        progress.classList.remove('hidden');
+                        log.classList.remove('hidden');
+                        kernelsuBtn.disabled = true;
+                        
+                        addLog('Начинаем установку KernelSU NEXT...', '#ffff00');
+                        
+                        const steps = [
+                            { progress: 10, log: 'Проверка совместимости ядра...', delay: 500 },
+                            { progress: 25, log: 'Скачивание KernelSU NEXT v1.0.3...', delay: 1000 },
+                            { progress: 40, log: 'Проверка целостности файлов...', delay: 800 },
+                            { progress: 55, log: 'Создание резервной копии ядра...', delay: 1200 },
+                            { progress: 70, log: 'Патчинг ядра для KernelSU...', delay: 1500 },
+                            { progress: 85, log: 'Установка модулей KernelSU...', delay: 1000 },
+                            { progress: 95, log: 'Настройка прав доступа...', delay: 800 },
+                            { progress: 100, log: 'KernelSU NEXT установлен успешно!', delay: 500 }
+                        ];
+                        
+                        let currentStep = 0;
+                        const processStep = () => {
+                            if (currentStep < steps.length) {
+                                const step = steps[currentStep];
+                                progressBar.style.width = step.progress + '%';
+                                addLog(step.log, '#00ff00');
+                                
+                                if (step.progress === 100) {
+                                    setTimeout(() => {
+                                        localStorage.setItem('kernelsu_installed', 'true');
+                                        localStorage.setItem('is_rooted', 'true');
+                                        addLog('Перезагрузка устройства через 3 секунды...', '#ffff00');
+                                        setTimeout(() => rebootDevice(true), 3000);
+                                    }, step.delay);
+                                } else {
+                                    setTimeout(processStep, step.delay);
+                                }
+                                currentStep++;
+                            }
+                        };
+                        
+                        processStep();
+                    }
+                });
+            }
         },
 
         Donate: (container) => {
